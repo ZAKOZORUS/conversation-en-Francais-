@@ -9,7 +9,7 @@ app.use(express.json());
 app.use(express.static('public'));
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = 'gemini-flash-latest';
+const MODEL = 'gemini-flash-lite-latest';
 
 // Voix neurales gratuites (service Microsoft Edge, sans cle API)
 const FRENCH_VOICES = [
@@ -73,8 +73,7 @@ app.post('/api/chat', async (req, res) => {
       contents,
       systemInstruction: { parts: [{ text: buildSystemPrompt(level) }] },
       generationConfig: {
-        maxOutputTokens: 500,
-        thinkingConfig: { thinkingBudget: 0 }
+        maxOutputTokens: 500
       }
     });
 
