@@ -69,21 +69,28 @@ app.post('/api/chat', async (req, res) => {
     }));
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: buildSystemPrompt(level) }] },
-        generationConfig: {
-          maxOutputTokens: 500,
-          thinkingConfig: { thinkingBudget: 0 }
-        }
-      })
+    const body = JSON.stringify({
+      contents,
+      systemInstruction: { parts: [{ text: buildSystemPrompt(level) }] },
+      generationConfig: {
+        maxOutputTokens: 500,
+        thinkingConfig: { thinkingBudget: 0 }
+      }
     });
 
-    const data = await response.json();
+    // Gemini renvoie parfois une erreur temporaire "surcharge" (503) :
+    // on reessaie automatiquement 2 fois avant d'abandonner.
+    let response, data;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body
+      });
+      data = await response.json();
+      if (response.ok || response.status !== 503) break;
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
 
     if (!response.ok) {
       console.error('Erreur API Gemini:', data);
