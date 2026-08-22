@@ -78,8 +78,17 @@ app.post('/api/chat', async (req, res) => {
       }
     });
 
-    // Gemini renvoie parfois une erreur temporaire "surcharge" (503) :
-    // on reessaie automatiquement 2 fois avant d'abandonner.
+    // Gemini renvoie parfois une erreur temporaire "surcharge" (503) ou de
+    // quota depasse (429, souvent remis a zero en quelques secondes) :
+    // on reessaie automatiquement en respectant le delai indique par Google.
+    function retryDelayMs(errData) {
+      const detail = errData?.error?.details?.find(
+        (d) => d['@type'] === 'type.googleapis.com/google.rpc.RetryInfo'
+      );
+      const seconds = parseFloat(detail?.retryDelay);
+      return Number.isFinite(seconds) ? Math.min(seconds * 1000 + 500, 15000) : null;
+    }
+
     let response, data;
     for (let attempt = 0; attempt < 3; attempt++) {
       response = await fetch(url, {
@@ -88,13 +97,18 @@ app.post('/api/chat', async (req, res) => {
         body
       });
       data = await response.json();
-      if (response.ok || response.status !== 503) break;
-      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      if (response.ok || (response.status !== 503 && response.status !== 429)) break;
+      if (attempt === 2) break;
+      const delay = retryDelayMs(data) ?? 1000 * (attempt + 1);
+      await new Promise((r) => setTimeout(r, delay));
     }
 
     if (!response.ok) {
       console.error('Erreur API Gemini:', data);
-      return res.status(502).json({ error: data.error?.message || 'Erreur API Gemini' });
+      const friendly = response.status === 429
+        ? "Trop de monde utilise l'app en meme temps, ca se libere en quelques secondes. Reessaie."
+        : data.error?.message || 'Erreur API Gemini';
+      return res.status(502).json({ error: friendly });
     }
 
     const reply = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '';
